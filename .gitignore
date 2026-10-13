@@ -1,0 +1,13 @@
+.env
+works/
+__pycache__/
+.pytest_cache/
+studio/.cache/
+studio/settings.json
+bridge/bridge.log
+bridge/bridge.out
+bridge/bridge.pid
+bridge/regress.log
+.DS_Store
+_workspace/
+bridge/regress.pid

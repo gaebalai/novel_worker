@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# nw — novel_worker 실행기.
+# 중계기(bridge/proxy.mjs)가 떠 있는 것을 확인한 뒤, Claude Code 를 그 중계기 경유로 실행한다.
+# 바탕: ~/.claude/model-bridge/claude-ds (같은 안전장치: health 확인 전에는 claude 를 띄우지 않는다).
+#
+#   ./nw                    중계기 확인/기동 → claude 실행(이 폴더의 CLAUDE.md·/novel-* 명령이 적용된다)
+#   ./nw --bridge           중계기만 확인/기동하고 끝낸다(엔진을 터미널에서 직접 돌릴 때)
+#   ./nw --bridge-restart   proxy.mjs 를 고친 뒤 다시 띄운다
+#   ./nw --status           중계기 상태(업체별 키 유무)를 보여 준다
+#   ./nw --stop             중계기를 끈다
+#
+# API 키는 .env 에서 읽어 "중계기 프로세스에만" 넘긴다. Claude Code 본체에는 넘기지 않는다
+# (ANTHROPIC_API_KEY 가 보이면 Claude Code 가 구독 로그인 대신 API 키로 과금하기 때문).
+set -euo pipefail
+
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+command -v node >/dev/null 2>&1 || { echo "nw: node 가 필요합니다 (brew install node)" >&2; exit 1; }
+command -v curl >/dev/null 2>&1 || { echo "nw: curl 이 필요합니다" >&2; exit 1; }
+
+healthy() { curl -sf --max-time 3 -o /dev/null "$HEALTH"; }
+listener() { lsof -ti "tcp:${PORT}" -sTCP:LISTEN 2>/dev/null | head -1 || true; }
+
+# pid 가 정말 이 중계기인지 명령줄로 확인하고 죽인다(오래된 pid 파일로 무관한 프로세스를 죽이지 않게).
+kill_if_bridge() {
+  [ -n "${1:-}" ] || return 0
+  if ps -p "$1" -o command= 2>/dev/null | grep -q 'bridge/proxy\.mjs'; then
+    kill "$1" 2>/dev/null || true
+  fi
+}
+
+# .env 를 셸 문법이 아니라 KEY=VALUE 로만 읽는다(source 하면 공백·$·# 가 든 키가 깨진다).
+#  - 앞의 `export ` 허용, 값 양끝의 같은 따옴표 한 쌍 제거, 줄 끝 \r(CRLF) 제거, # 로 시작하는 줄·빈 줄 무시
+#  - 값 안의 공백·$·# 는 그대로 둔다(따옴표 밖의 "값 #주석" 은 지원하지 않는다 — 키에 # 가 들어갈 수 있으므로)
+load_env() {
+  local f="$1" line k v
+  [ -f "$f" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=(.*)$ ]] || continue
+    k="${BASH_REMATCH[2]}"; v="${BASH_REMATCH[3]}"
+    v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"   # 앞뒤 공백 제거(파이썬 쪽 .env 읽기와 같게)
+    if [[ ${#v} -ge 2 && ( ( "${v:0:1}" == '"' && "${v: -1}" == '"' ) || ( "${v:0:1}" == "'" && "${v: -1}" == "'" ) ) ]]; then
+      v="${v:1:${#v}-2}"
+    fi
+    export "$k=$v"
+  done <"$f"
+}
+
+# 포트：환경 변수 > .env 의 NOVEL_BRIDGE_PORT > 8788 (도구들도 같은 순서로 읽는다)
+PORT="${NOVEL_BRIDGE_PORT:-$( (load_env "$DIR/.env"; printf '%s' "${NOVEL_BRIDGE_PORT:-}") )}"
+PORT="${PORT:-8788}"
+HEALTH="http://127.0.0.1:${PORT}/__bridge/health"
+
+start_bridge() {
+  [ -f "$DIR/.env" ] || echo "nw: 경고 - $DIR/.env 가 없습니다 (.env.example 을 복사해 키를 적으세요)" >&2
+  # 서브셸에서 .env 를 읽고 중계기만 띄운다 → 키는 중계기 프로세스의 환경에만 남는다
+  (
+    load_env "$DIR/.env"
+    export BRIDGE_PORT="$PORT"
+    nohup node "$DIR/bridge/proxy.mjs" >>"$DIR/bridge/bridge.out" 2>&1 &
+    echo $! >"$DIR/bridge/.starting"
+  )
+  local pid; pid="$(cat "$DIR/bridge/.starting")"; rm -f "$DIR/bridge/.starting"
+  for _ in $(seq 1 50); do
+    healthy && return 0
+    kill -0 "$pid" 2>/dev/null || break   # 이미 죽었으면(EADDRINUSE 등) 더 기다리지 않는다
+    sleep 0.2
+  done
+  kill "$pid" 2>/dev/null || true
+  echo "nw: 중계기가 포트 ${PORT}에서 시작되지 않습니다. 마지막 기록:" >&2
+  tail -n 5 "$DIR/bridge/bridge.out" >&2 2>/dev/null || true
+  return 1
+}
+
+stop_bridge() {
+  for pid in $(listener) $(cat "$DIR/bridge/bridge.pid" 2>/dev/null || true); do kill_if_bridge "$pid"; done
+  for _ in $(seq 1 50); do [ -z "$(listener)" ] && return 0; sleep 0.2; done
+  echo "nw: 포트 ${PORT}를 해제할 수 없습니다 (pid $(listener))" >&2
+  return 1
+}
+
+# 등록된 키 → 모드(solo/duo/all) 한 줄 요약. 키 값은 보지 않는다(중계기가 알려 주는 유무만).
+show_mode() {
+  NOVEL_BRIDGE_PORT="$PORT" python3 "$DIR/studio/cli.py" keys --short || true
+}
+
+case "${1:-}" in
+  --stop)
+    stop_bridge || exit 1
+    echo "nw: 중계기를 껐습니다"; exit 0 ;;
+  --bridge-restart)
+    stop_bridge || exit 1
+    start_bridge || exit 1
+    echo "nw: 중계기를 다시 띄웠습니다 (port ${PORT})"; exit 0 ;;
+  --status)
+    if healthy; then curl -s "$HEALTH" | python3 -m json.tool; show_mode; else echo "nw: 중계기가 꺼져 있습니다"; exit 1; fi
+    exit 0 ;;
+  --bridge)
+    healthy || start_bridge || exit 1
+    echo "nw: 중계기 동작 중 http://127.0.0.1:${PORT}"; show_mode; exit 0 ;;
+esac
+
+healthy || start_bridge || exit 1
+show_mode
+
+export ANTHROPIC_BASE_URL="http://127.0.0.1:${PORT}"
+# 임의의 base URL 을 firstParty 로 취급하게 한다. 이게 없으면 구독(OAuth) 로그인이 쓰이지 않는다.
+export _CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1
+# /model 목록에 하나를 더한다(나머지 모델은 서브에이전트나 --model 로 고른다)
+export ANTHROPIC_CUSTOM_MODEL_OPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION:-kimi-k3}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_NAME="${ANTHROPIC_CUSTOM_MODEL_OPTION_NAME:-Kimi K3}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION:-via novel_worker bridge}"
+
+cd "$DIR"
+exec claude "$@"

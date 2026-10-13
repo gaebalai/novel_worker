@@ -1,0 +1,72 @@
+{
+  "_comment": "별칭 → 실제 모델 ID 와 가격(1M 토큰당 달러, [입력, 출력]). config·명령에서는 별칭(sonnet 등)이나 ID 어느 쪽이든 쓸 수 있다. 가격은 비용 추산용이므로 각 회사 가격표가 바뀌면 여기를 고친다. price 가 null 이면 비용을 추산하지 않는다(0 으로 표시).",
+  "models": {
+    "sonnet": {
+      "id": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "price": [
+        2.0,
+        10.0
+      ],
+      "label": "Claude Sonnet 5.5"
+    },
+    "opus": {
+      "id": "claude-opus-5-5",
+      "provider": "anthropic",
+      "price": [
+        4.0,
+        20.0
+      ],
+      "label": "Claude Opus 5.5"
+    },
+    "haiku": {
+      "id": "claude-haiku-5-5",
+      "provider": "anthropic",
+      "price": [
+        0.1,
+        0.5
+      ],
+      "label": "Claude Haiku 5.5"
+    },
+    "gpt": {
+      "id": "gpt-6.1-sol",
+      "provider": "openai",
+      "price": [
+        2.0,
+        10.0
+      ],
+      "label": "GPT 6.1-Sol",
+      "_note": "2026-10-14 공식 문서 확인. 입력 $2·캐시 입력 $0.10·출력 $10. chat/completions 는 tool calling 미지원(중계기가 도구를 빼고 보낸다)"
+    },
+    "glm": {
+      "id": "glm-5.3",
+      "provider": "glm",
+      "price": [
+        1.4,
+        4.4
+      ],
+      "label": "GLM 5.3",
+      "_note": "2026-10-14 z.ai 공식 문서 확인(API model 값 glm-5.3). 입력 $1.4(캐시 $0.26)·출력 $4.4. stream_options 미지원이라 중계기가 빼고 보낸다"
+    },
+    "qwen": {
+      "id": "qwen3.8-max",
+      "provider": "qwen",
+      "price": [
+        2.0,
+        6.0
+      ],
+      "label": "Qwen 3.8 Max",
+      "_note": "2026-10-14 Alibaba Model Studio 국제판(싱가포르) 공식 가격표 확인. 입력 $2·출력 $6"
+    },
+    "kimi": {
+      "id": "kimi-k3",
+      "provider": "kimi",
+      "price": [
+        3.0,
+        15.0
+      ],
+      "label": "Kimi K3",
+      "_note": "2026-10-14 공식 문서 확인. 입력 $3(캐시 $0.30)·출력 $15, 컨텍스트 1M. 저렴한 대안: kimi-k2.6 ($0.95/$4)"
+    }
+  }
+}

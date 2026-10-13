@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 studio/cli.py:*)",
+      "Bash(./nw --status)",
+      "Bash(./nw --bridge)",
+      "Bash(shasum -a 256 works/*)"
+    ],
+    "ask": [
+      "Bash(python3 studio/cli.py fix *)",
+      "Bash(python3 studio/cli.py engine * rescue_*)",
+      "Bash(python3 studio/cli.py engine * proofread*)",
+      "Bash(python3 studio/cli.py engine * reset_chapter*)",
+      "Bash(python3 studio/cli.py engine * resolve *accept*)",
+      "Bash(python3 studio/cli.py engine * resolve *done*)",
+      "Bash(python3 studio/cli.py engine * set_budget*)",
+      "Bash(python3 studio/cli.py keys --ping*)",
+      "Bash(*novelctl.py approve-canon*)",
+      "Bash(*novelctl.py set-budget*)",
+      "Bash(*novelctl.py rescue*)",
+      "Bash(*novelctl.py proofread*)",
+      "Bash(*novelctl.py reset-chapter*)",
+      "Bash(*novelctl.py resolve *--accept*)",
+      "Bash(*novelctl.py resolve *--done*)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Bash(cat *.env)",
+      "Bash(cat *.env *)",
+      "Bash(head *.env*)",
+      "Bash(tail *.env*)",
+      "Bash(less *.env*)",
+      "Bash(more *.env*)",
+      "Bash(bat *.env*)",
+      "Bash(grep *.env*)",
+      "Bash(source *.env*)",
+      "Bash(. *.env*)",
+      "Edit(./LICENSE)",
+      "Write(./LICENSE)",
+      "Edit(./works/*/canon/**)",
+      "Edit(./works/*/chapters/**)",
+      "Edit(./works/*/state/**)",
+      "Edit(./works/*/config.json)",
+      "Edit(./works/*/BRIEF.md)",
+      "Edit(./works/*/brief.json)",
+      "Edit(./works/*/studio.json)"
+    ]
+  }
+}
